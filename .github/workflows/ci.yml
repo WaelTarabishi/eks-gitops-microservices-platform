@@ -2,6 +2,19 @@ name: Boutique CI Pipeline
 
 on:
   workflow_dispatch:
+    inputs:
+      rebuild_scope:
+        description: "Choose how many services to rebuild"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - selected
+      selected_services:
+        description: "Comma-separated services when rebuild_scope=selected"
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -33,6 +46,8 @@ jobs:
           set -euo pipefail
 
           ALL_SERVICES=(auth gateway orders order-service product-service user-service frontend)
+          REBUILD_SCOPE="${{ github.event.inputs.rebuild_scope }}"
+          SELECTED_INPUT="${{ github.event.inputs.selected_services }}"
 
           add_service() {
             local service="$1"
@@ -49,7 +64,31 @@ jobs:
           SELECTED_SERVICES=()
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            SELECTED_SERVICES=("${ALL_SERVICES[@]}")
+            if [[ "$REBUILD_SCOPE" == "selected" ]]; then
+              IFS=',' read -ra REQUESTED_SERVICES <<< "$SELECTED_INPUT"
+
+              for raw_service in "${REQUESTED_SERVICES[@]}"; do
+                service="$(echo "$raw_service" | xargs)"
+
+                if [[ -z "$service" ]]; then
+                  continue
+                fi
+
+                if [[ ! " ${ALL_SERVICES[*]} " =~ " ${service} " ]]; then
+                  echo "Unsupported service requested: $service"
+                  exit 1
+                fi
+
+                add_service "$service"
+              done
+
+              if [[ ${#SELECTED_SERVICES[@]} -eq 0 ]]; then
+                echo "No services were provided for rebuild_scope=selected"
+                exit 1
+              fi
+            else
+              SELECTED_SERVICES=("${ALL_SERVICES[@]}")
+            fi
           else
             BEFORE_SHA="${{ github.event.before }}"
             CURRENT_SHA="${{ github.sha }}"
