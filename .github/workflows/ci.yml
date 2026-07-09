@@ -11,17 +11,17 @@ on:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   detect-changes:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     outputs:
       services: ${{ steps.detect.outputs.services }}
       has_changes: ${{ steps.detect.outputs.has_changes }}
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -97,20 +97,76 @@ jobs:
           echo "services=$SERVICES_JSON" >> "$GITHUB_OUTPUT"
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
 
-  build-and-push:
+  prepare-release:
     needs: detect-changes
     if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.prepare.outputs.services }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare per-service release metadata
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bump_patch() {
+            local version="$1"
+            local major minor patch
+
+            IFS='.' read -r major minor patch <<< "$version"
+            echo "${major}.${minor}.$((patch + 1))"
+          }
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          SERVICES='${{ needs.detect-changes.outputs.services }}'
+          RELEASES=()
+
+          while IFS= read -r SERVICE; do
+            if [[ "$SERVICE" == "frontend" ]]; then
+              PACKAGE_JSON="projects/boutique-microservices/frontend/package.json"
+              BUILD_PATH="projects/boutique-microservices/frontend"
+              MANIFEST="gitops/k8s/frontend/deployment.yml"
+            else
+              PACKAGE_JSON="projects/boutique-microservices/backend/services/${SERVICE}/package.json"
+              BUILD_PATH="projects/boutique-microservices/backend/services/${SERVICE}"
+              MANIFEST="gitops/k8s/backend/${SERVICE}.yml"
+            fi
+
+            CURRENT_VERSION=$(jq -r '.version' "$PACKAGE_JSON")
+            NEXT_VERSION=$(bump_patch "$CURRENT_VERSION")
+            IMAGE_TAG="${NEXT_VERSION}-${SHORT_SHA}"
+
+            RELEASES+=("$(jq -nc \
+              --arg service "$SERVICE" \
+              --arg package_json "$PACKAGE_JSON" \
+              --arg build_path "$BUILD_PATH" \
+              --arg manifest "$MANIFEST" \
+              --arg version "$NEXT_VERSION" \
+              --arg image_tag "$IMAGE_TAG" \
+              '{service: $service, package_json: $package_json, build_path: $build_path, manifest: $manifest, version: $version, image_tag: $image_tag}')")
+          done < <(echo "$SERVICES" | jq -r '.[]')
+
+          RELEASES_JSON=$(printf '%s\n' "${RELEASES[@]}" | jq -sc .)
+          echo "services=$RELEASES_JSON" >> "$GITHUB_OUTPUT"
+
+  build-and-push:
+    needs: prepare-release
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+        service: ${{ fromJson(needs.prepare-release.outputs.services) }}
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -119,71 +175,66 @@ jobs:
 
       - name: Login to Amazon ECR
         run: |
-          aws ecr get-login-password --region $AWS_REGION | \
+          aws ecr get-login-password --region "$AWS_REGION" | \
           docker login --username AWS \
           --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com
-     
-      - name: Build Docker Image
-        run: |
-          if [ "${{ matrix.service }}" == "frontend" ]; then
-            BUILD_PATH="projects/boutique-microservices/frontend"
-          else
-            BUILD_PATH="projects/boutique-microservices/backend/services/${{ matrix.service }}"
-          fi
 
-          echo "Building from $BUILD_PATH"
+      - name: Build Docker image
+        run: |
+          IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.service.service }}:${{ matrix.service.image_tag }}
+          echo "Building $IMAGE_URI from ${{ matrix.service.build_path }}"
 
           docker build \
-            -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/${{ matrix.service }}:$IMAGE_TAG \
-          $BUILD_PATH
+            -t "$IMAGE_URI" \
+            "${{ matrix.service.build_path }}"
 
-
-      - name: Push Docker Image
+      - name: Push Docker image
         run: |
-          IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.service }}:${{ github.sha }}
+          IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ matrix.service.service }}:${{ matrix.service.image_tag }}
           echo "Pushing $IMAGE_URI"
-          docker push $IMAGE_URI
+          docker push "$IMAGE_URI"
 
   update-manifests:
-    runs-on: ubuntu-latest
     needs:
-      - detect-changes
+      - prepare-release
       - build-and-push
-    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update image tags in k8s manifests
+      - name: Update package versions and image tags
         shell: bash
         run: |
           set -euo pipefail
 
-          NEW_TAG=${{ github.sha }}
           ACCOUNT=${{ secrets.AWS_ACCOUNT_ID }}
           REGION=${{ secrets.AWS_REGION }}
-          SERVICES='${{ needs.detect-changes.outputs.services }}'
+          SERVICES='${{ needs.prepare-release.outputs.services }}'
 
-          while IFS= read -r SERVICE; do
-            if [[ "$SERVICE" == "frontend" ]]; then
-              MANIFEST="gitops/k8s/frontend/deployment.yml"
-            else
-              MANIFEST="gitops/k8s/backend/${SERVICE}.yml"
-            fi
+          while IFS= read -r ENTRY; do
+            SERVICE=$(echo "$ENTRY" | jq -r '.service')
+            PACKAGE_JSON=$(echo "$ENTRY" | jq -r '.package_json')
+            MANIFEST=$(echo "$ENTRY" | jq -r '.manifest')
+            VERSION=$(echo "$ENTRY" | jq -r '.version')
+            IMAGE_TAG=$(echo "$ENTRY" | jq -r '.image_tag')
 
-            sed -Ei "s|(^[[:space:]]*image:[[:space:]]*).*$|\\1${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${SERVICE}:${NEW_TAG}|g" "$MANIFEST"
-          done < <(echo "$SERVICES" | jq -r '.[]')
+            TMP_FILE=$(mktemp)
+            jq --arg version "$VERSION" '.version = $version' "$PACKAGE_JSON" > "$TMP_FILE"
+            mv "$TMP_FILE" "$PACKAGE_JSON"
 
-      - name: Commit and push updated manifests
+            sed -Ei "s|(^[[:space:]]*image:[[:space:]]*).*$|\\1${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${SERVICE}:${IMAGE_TAG}|g" "$MANIFEST"
+          done < <(echo "$SERVICES" | jq -c '.[]')
+
+      - name: Commit and push release updates
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add gitops/k8s/
-          git diff --staged --quiet || git commit -m "ci: update image tags to ${{ github.sha }}"
+          git add gitops/k8s/ projects/boutique-microservices/
+          git diff --staged --quiet || git commit -m "ci: update service versions and image tags [skip ci]"
           git push
-
