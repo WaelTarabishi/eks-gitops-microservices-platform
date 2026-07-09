@@ -2,25 +2,109 @@ name: Boutique CI Pipeline
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ci.yml
+      - projects/boutique-microservices/**
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed services
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALL_SERVICES=(auth gateway orders order-service product-service user-service frontend)
+
+          add_service() {
+            local service="$1"
+
+            for existing in "${SELECTED_SERVICES[@]:-}"; do
+              if [[ "$existing" == "$service" ]]; then
+                return
+              fi
+            done
+
+            SELECTED_SERVICES+=("$service")
+          }
+
+          SELECTED_SERVICES=()
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            SELECTED_SERVICES=("${ALL_SERVICES[@]}")
+          else
+            BEFORE_SHA="${{ github.event.before }}"
+            CURRENT_SHA="${{ github.sha }}"
+
+            if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+              mapfile -t CHANGED_FILES < <(git show --pretty="" --name-only "$CURRENT_SHA")
+            else
+              mapfile -t CHANGED_FILES < <(git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA")
+            fi
+
+            for file in "${CHANGED_FILES[@]}"; do
+              case "$file" in
+                projects/boutique-microservices/frontend/*)
+                  add_service "frontend"
+                  ;;
+                projects/boutique-microservices/backend/services/auth/*)
+                  add_service "auth"
+                  ;;
+                projects/boutique-microservices/backend/services/gateway/*)
+                  add_service "gateway"
+                  ;;
+                projects/boutique-microservices/backend/services/orders/*)
+                  add_service "orders"
+                  ;;
+                projects/boutique-microservices/backend/services/order-service/*)
+                  add_service "order-service"
+                  ;;
+                projects/boutique-microservices/backend/services/product-service/*)
+                  add_service "product-service"
+                  ;;
+                projects/boutique-microservices/backend/services/user-service/*)
+                  add_service "user-service"
+                  ;;
+              esac
+            done
+          fi
+
+          if [[ ${#SELECTED_SERVICES[@]} -eq 0 ]]; then
+            echo "services=[]" >> "$GITHUB_OUTPUT"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SERVICES_JSON=$(printf '%s\n' "${SELECTED_SERVICES[@]}" | jq -R . | jq -sc .)
+          echo "services=$SERVICES_JSON" >> "$GITHUB_OUTPUT"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
   build-and-push:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        service:
-          - auth
-          - gateway
-          - orders
-          - order-service
-          - product-service
-          - user-service
-          - frontend
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
 
     steps:
       - name: Checkout Code
@@ -62,7 +146,10 @@ jobs:
 
   update-manifests:
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs:
+      - detect-changes
+      - build-and-push
+    if: needs.detect-changes.outputs.has_changes == 'true'
     permissions:
       contents: write
 
@@ -73,17 +160,24 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update image tags in k8s manifests
+        shell: bash
         run: |
+          set -euo pipefail
+
           NEW_TAG=${{ github.sha }}
           ACCOUNT=${{ secrets.AWS_ACCOUNT_ID }}
           REGION=${{ secrets.AWS_REGION }}
+          SERVICES='${{ needs.detect-changes.outputs.services }}'
 
-          for SERVICE in auth gateway orders order-service product-service user-service; do
-            MANIFEST="gitops/k8s/backend/${SERVICE}.yml"
-            sed -i "s|${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${SERVICE}:.*|${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${SERVICE}:${NEW_TAG}|g" $MANIFEST
-          done
+          while IFS= read -r SERVICE; do
+            if [[ "$SERVICE" == "frontend" ]]; then
+              MANIFEST="gitops/k8s/frontend/deployment.yml"
+            else
+              MANIFEST="gitops/k8s/backend/${SERVICE}.yml"
+            fi
 
-          sed -i "s|${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/frontend:.*|${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/frontend:${NEW_TAG}|g" gitops/k8s/frontend/deployment.yml
+            sed -Ei "s|(^[[:space:]]*image:[[:space:]]*).*$|\\1${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${SERVICE}:${NEW_TAG}|g" "$MANIFEST"
+          done < <(echo "$SERVICES" | jq -r '.[]')
 
       - name: Commit and push updated manifests
         run: |
