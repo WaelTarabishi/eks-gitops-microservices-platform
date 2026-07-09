@@ -1,7 +1,9 @@
-# Product Service Dockerfile
 FROM node:20-alpine AS builder
 
 WORKDIR /app
+
+# Install Python and build dependencies required by native packages like sharp
+RUN apk add --no-cache python3 make g++ cairo-dev jpeg-dev pango-dev giflib-dev
 
 # Copy package files
 COPY package*.json ./
