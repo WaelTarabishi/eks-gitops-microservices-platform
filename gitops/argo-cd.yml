@@ -6,11 +6,11 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: 'https://github.com/vishakhasadhwani/DevOps-Practice-Guide.git'
+    repoURL: "https://github.com/WaelTarabishi/eks-gitops-microservices-platform"
     targetRevision: main
     path: gitops
   destination:
-    server: 'https://kubernetes.default.svc'
+    server: "https://kubernetes.default.svc"
     namespace: boutique
   syncPolicy: {}
   # syncPolicy:
