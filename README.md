@@ -158,3 +158,41 @@ Once you implement the project:
 | Log Forwarding | AWS Fluent Bit → CloudWatch |
 | AIOps | AWS Bedrock Agent (Kira) |
 | AI Assistant | Claude Code + MCP Servers |
+
+---
+
+## Implementation Walkthrough
+
+These screenshots show the repository implemented end to end on AWS and Kubernetes, including the CI/CD and GitOps flow used to deploy the application.
+
+### 1. EKS cluster and node group provisioned with Terraform
+
+![EKS cluster and node group](docs/assets/implementation/01-eks-cluster-compute.png)
+
+### 2. Initial Kubernetes deployment state before image references were corrected
+
+![Initial Kubernetes pod state with invalid image names](docs/assets/implementation/02-initial-invalid-image-state.png)
+
+### 3. ECR repositories created for all application services
+
+![Amazon ECR repositories for the microservices](docs/assets/implementation/03-ecr-repositories.png)
+
+### 4. Argo CD exposed locally through port-forward for GitOps operations
+
+![Argo CD local access via port-forward](docs/assets/implementation/04-argocd-port-forward-access.png)
+
+### 5. Argo CD application healthy and synced against the GitOps repository
+
+![Argo CD application healthy and synced](docs/assets/implementation/05-argocd-app-synced.png)
+
+### 6. Frontend served from the Kubernetes cluster through local port-forwarding
+
+![Frontend running locally through Kubernetes port-forwarding](docs/assets/implementation/06-frontend-port-forward.png)
+
+### 7. GitHub Actions building and releasing the frontend change
+
+![GitHub Actions workflow run](docs/assets/implementation/07-github-actions-run.png)
+
+### 8. Commit history showing application changes and CI-generated GitOps updates
+
+![Commit history with CI-generated updates](docs/assets/implementation/08-commit-history.png)

@@ -20,7 +20,10 @@ on:
       - main
     paths:
       - .github/workflows/ci.yml
-      - projects/boutique-microservices/**
+      - projects/boutique-microservices/frontend/**
+      - projects/boutique-microservices/backend/services/**
+      - projects/boutique-microservices/backend/shared/**
+      - projects/boutique-microservices/shared/**
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -101,6 +104,9 @@ jobs:
 
             for file in "${CHANGED_FILES[@]}"; do
               case "$file" in
+                *.md)
+                  continue
+                  ;;
                 projects/boutique-microservices/frontend/*)
                   add_service "frontend"
                   ;;
@@ -121,6 +127,11 @@ jobs:
                   ;;
                 projects/boutique-microservices/backend/services/user-service/*)
                   add_service "user-service"
+                  ;;
+                projects/boutique-microservices/backend/shared/*|projects/boutique-microservices/shared/*)
+                  for service in "${ALL_SERVICES[@]}"; do
+                    add_service "$service"
+                  done
                   ;;
               esac
             done
