@@ -3,14 +3,10 @@ import {
   Container,
   Typography,
   Grid,
-  Card,
-  CardMedia,
-  CardContent,
-  CardActions,
   Button,
   Box,
   Paper,
-  IconButton,
+  Chip,
   Fade,
   Slide,
 } from '@mui/material';
@@ -104,6 +100,15 @@ const Home: React.FC = () => {
                     Indulge in our curated collection of luxury products, 
                     where sophistication meets exceptional quality.
                   </Typography>
+                  <Chip
+                    label="GitOps rollout check: frontend update active"
+                    sx={{
+                      mb: 3,
+                      backgroundColor: '#f4e5c2',
+                      color: '#1a1a1a',
+                      fontWeight: 700,
+                    }}
+                  />
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <Button
                       variant="contained"
