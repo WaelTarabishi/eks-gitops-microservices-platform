@@ -1,6 +1,6 @@
 {
   "name": "auth-service",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Authentication microservice for boutique application",
   "main": "dist/index.js",
   "scripts": {
@@ -9,7 +9,11 @@
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["auth", "microservice", "boutique"],
+  "keywords": [
+    "auth",
+    "microservice",
+    "boutique"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
