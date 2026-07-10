@@ -196,3 +196,7 @@ These screenshots show the repository implemented end to end on AWS and Kubernet
 ### 8. Commit history showing application changes and CI-generated GitOps updates
 
 ![Commit history with CI-generated updates](docs/assets/implementation/08-commit-history.png)
+
+### 9. ECR image tags showing versioned frontend releases pushed by CI
+
+![ECR image tags for frontend releases](docs/assets/implementation/09-ecr-image-tags.png)
