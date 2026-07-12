@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# AIOps Assistant — IAM Setup Script
+# AIOps Assistant - IAM Setup Script
 #
 # Creates all IAM roles and policies required for the project:
-#   1. aiops-lambda-role       — used by all 3 Lambda functions
-#   2. aiops-bedrock-agent-role — used by the Bedrock Agent
+#   1. aiops-lambda-role - used by all 3 Lambda functions
+#   2. aiops-bedrock-agent-role - used by the Bedrock Agent
 #
 # Usage:
 #   chmod +x setup-iam.sh
@@ -18,7 +18,7 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 echo ""
 echo "============================================="
-echo " AIOps — IAM Setup"
+echo " AIOps - IAM Setup"
 echo " Account : $ACCOUNT_ID"
 echo " Region  : $REGION"
 echo "============================================="
@@ -49,23 +49,21 @@ EOF
 )
 
 if aws iam get-role --role-name "$LAMBDA_ROLE_NAME" &>/dev/null; then
-  echo "  ✓ Role already exists: $LAMBDA_ROLE_NAME"
+  echo "  [ok] Role already exists: $LAMBDA_ROLE_NAME"
 else
   aws iam create-role \
     --role-name "$LAMBDA_ROLE_NAME" \
     --assume-role-policy-document "$LAMBDA_TRUST_POLICY" \
-    --description "Role for AIOps Lambda functions — fetch logs, metrics, and EKS health" \
+    --description "Role for AIOps Lambda functions - fetch logs, metrics, and EKS health" \
     --query 'Role.RoleName' --output text
-  echo "  ✓ Created: $LAMBDA_ROLE_NAME"
+  echo "  [ok] Created: $LAMBDA_ROLE_NAME"
 fi
 
-# Attach managed policy for basic Lambda execution (CloudWatch Logs write)
 aws iam attach-role-policy \
   --role-name "$LAMBDA_ROLE_NAME" \
   --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-echo "  ✓ Attached: AWSLambdaBasicExecutionRole"
+echo "  [ok] Attached: AWSLambdaBasicExecutionRole"
 
-# Inline policy for reading CloudWatch Logs and EKS health
 LAMBDA_INLINE_POLICY=$(cat <<EOF
 {
   "Version": "2012-10-17",
@@ -102,7 +100,7 @@ aws iam put-role-policy \
   --role-name "$LAMBDA_ROLE_NAME" \
   --policy-name "aiops-lambda-inline-policy" \
   --policy-document "$LAMBDA_INLINE_POLICY"
-echo "  ✓ Inline policy applied: CloudWatch Logs read + EKS describe"
+echo "  [ok] Inline policy applied: CloudWatch Logs read + EKS describe"
 
 # =============================================================================
 # ROLE 2: aiops-bedrock-agent-role
@@ -135,17 +133,16 @@ EOF
 )
 
 if aws iam get-role --role-name "$AGENT_ROLE_NAME" &>/dev/null; then
-  echo "  ✓ Role already exists: $AGENT_ROLE_NAME"
+  echo "  [ok] Role already exists: $AGENT_ROLE_NAME"
 else
   aws iam create-role \
     --role-name "$AGENT_ROLE_NAME" \
     --assume-role-policy-document "$BEDROCK_TRUST_POLICY" \
-    --description "Role for Bedrock Agent — AIOps assistant (Kira)" \
+    --description "Role for Bedrock Agent - AIOps assistant (Kira)" \
     --query 'Role.RoleName' --output text
-  echo "  ✓ Created: $AGENT_ROLE_NAME"
+  echo "  [ok] Created: $AGENT_ROLE_NAME"
 fi
 
-# Inline policy for invoking Lambda functions and Bedrock models
 AGENT_INLINE_POLICY=$(cat <<EOF
 {
   "Version": "2012-10-17",
@@ -167,7 +164,11 @@ AGENT_INLINE_POLICY=$(cat <<EOF
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "arn:aws:bedrock:$REGION::foundation-model/*"
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/*",
+        "arn:aws:bedrock:*:*:inference-profile/*",
+        "arn:aws:bedrock:*:*:application-inference-profile/*"
+      ]
     }
   ]
 }
@@ -178,7 +179,7 @@ aws iam put-role-policy \
   --role-name "$AGENT_ROLE_NAME" \
   --policy-name "aiops-bedrock-agent-inline-policy" \
   --policy-document "$AGENT_INLINE_POLICY"
-echo "  ✓ Inline policy applied: Lambda invoke + Bedrock model invoke"
+echo "  [ok] Inline policy applied: Lambda invoke + Bedrock model invoke"
 
 echo ""
 echo "============================================="

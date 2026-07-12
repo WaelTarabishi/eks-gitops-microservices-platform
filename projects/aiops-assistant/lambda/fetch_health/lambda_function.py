@@ -1,13 +1,24 @@
 import boto3
 import json
+import os
 import urllib.request
 import urllib.parse
 from datetime import datetime, timedelta
 
-DEFAULT_CLUSTER = "eks-cluster"
-DEFAULT_NAMESPACE = "boutique"
-REGION = "us-east-1"
-PROMETHEUS_URL = "http://<YOUR_PROMETHEUS_ELB_URL>:9090"
+
+def normalize_prometheus_url(url):
+    url = url.strip().rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        url = f"http://{url}"
+    return url
+
+
+DEFAULT_CLUSTER = os.environ.get("DEFAULT_CLUSTER", "eks-cluster")
+DEFAULT_NAMESPACE = os.environ.get("DEFAULT_NAMESPACE", "boutique")
+REGION = os.environ.get("AWS_REGION", "us-east-1")
+PROMETHEUS_URL = normalize_prometheus_url(
+    os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
+)
 
 def prometheus_query(query):
     """Run an instant PromQL query and return the result."""

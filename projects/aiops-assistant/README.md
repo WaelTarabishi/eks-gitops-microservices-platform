@@ -104,6 +104,12 @@ At the end, the script prints your **Agent ID** — keep it for the next step.
 
 ---
 
+All project screenshots are stored under the top-level `docs/assets/implementation/` folder.
+
+Deployment result in the Bedrock console:
+
+![Bedrock Agents Classic showing the aiops-assistant agent in Prepared state](../../docs/assets/implementation/10-bedrock-agent-prepared.png)
+
 ## Step 5: (Optional) Generate Sample Data
 
 Populate CloudWatch Logs with realistic error scenarios to test Kira:
@@ -143,6 +149,10 @@ streamlit run app.py
 ```
 
 Open **http://localhost:8501** in your browser.
+
+Example Kira chat UI after setup:
+
+![Kira Streamlit UI showing the AIOps assistant chat interface](../../docs/assets/implementation/11-kira-ui-cleaned.png)
 
 ---
 

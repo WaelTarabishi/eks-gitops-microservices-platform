@@ -1,11 +1,21 @@
 import json
+import os
 import urllib.request
 import urllib.parse
 from datetime import datetime
 
-PROMETHEUS_URL = "http://<YOUR_PROMETHEUS_ELB_URL>:9090"
 
-DEFAULT_NAMESPACE = "boutique"
+def normalize_prometheus_url(url):
+    url = url.strip().rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        url = f"http://{url}"
+    return url
+
+
+PROMETHEUS_URL = normalize_prometheus_url(
+    os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
+)
+DEFAULT_NAMESPACE = os.environ.get("DEFAULT_NAMESPACE", "boutique")
 
 METRIC_QUERIES = {
     "pod_cpu_utilization": 'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!=""}}[5m])) by (pod)',
