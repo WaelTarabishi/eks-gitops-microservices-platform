@@ -200,3 +200,11 @@ These screenshots show the repository implemented end to end on AWS and Kubernet
 ### 9. ECR image tags showing versioned frontend releases pushed by CI
 
 ![ECR image tags for frontend releases](docs/assets/implementation/09-ecr-image-tags.png)
+
+### 10. Bedrock agent prepared successfully in the AWS console
+
+![Bedrock agent prepared state](docs/assets/implementation/10-bedrock-agent-prepared.png)
+
+### 11. Kira AIOps assistant UI running locally
+
+![Kira AIOps assistant UI](docs/assets/implementation/11-kira-ui-cleaned.png)
